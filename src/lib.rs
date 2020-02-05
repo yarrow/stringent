@@ -3,6 +3,8 @@
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 
+use std::process::ExitStatus;
+use std::result::Result;
 use std::error::Error;
 use std::fmt;
 use std::io;
@@ -33,6 +35,42 @@ impl Error for CommandError {
         match self {
             CommandError::SpawnFailed(io_err) => Some(io_err),
             _ => None,
+        }
+    }
+}
+
+pub trait Stringent<T, E> {
+    fn stringent(self) -> Result<T, E>;
+}
+
+#[cfg(unix)]
+fn signal_of(status: &ExitStatus) -> Option<i32> {
+    use std::os::unix::process::ExitStatusExt;
+    status.signal()
+}
+
+// This handles the case where `code()==None` and `signal()==None`,
+// which as far as I know isn't possible.  But I don't know very far!
+#[cfg(not(unix))]
+fn signal_of(status: &ExitStatus) -> Option<i32> {
+    None
+}
+
+impl Stringent<ExitStatus, CommandError> for Result<ExitStatus, io::Error> {
+    fn stringent(self) -> Result<ExitStatus, CommandError> {
+        use CommandError::*;
+        match self {
+            Err(io_err) => Err(SpawnFailed(io_err)),
+            Ok(status) => {
+                if status.success() {
+                    Ok(status)
+                } else {
+                    match status.code() {
+                        Some(code) => Err(ExitCode(code)),
+                        None => Err(Signal(signal_of(&status))),
+                    }
+                }
+            }
         }
     }
 }

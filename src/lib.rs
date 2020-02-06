@@ -1,3 +1,18 @@
+//! Return an error when the `std::process::Command` operation was a success,
+//! but the process that ran died.
+//!
+//! This module helps with a papercut in `std::process::Command` and the
+//! related `Child` module. When `Command` is unable to spawn a process, it
+//! returns an `io::Error`.  But when a process runs but exits with an error
+//! code, or is killed by a signal, `Command` returns successfully, albeit with
+//! an `ExitStatus` that indicates the problem.
+//!
+//! For a simple application, you might want to print a message on an
+//! io::Error,
+//! `use Stringent` to add a `stringent()` method to `io::Result<ExitStatus>`,
+//! `io::Result<Option<ExitStatus>>`, and `io::Result<Output>' to turn those
+//! `Results` into `Results` with `CommandError`
+
 #![cfg_attr(debug_assertions, allow(unused))]
 #![cfg_attr(
     not(debug_assertions),
@@ -25,7 +40,7 @@ impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use CommandError::*;
         match self {
-            SpawnFailed(_) => write!(f, "Spawn failed"),
+            SpawnFailed(io) => write!(f, "Spawn failed: {}", io),
             ExitCode(code) => write!(f, "Exit code {}", code),
             Signal(signal) => match signal {
                 Some(sig) => write!(f, "Terminated by signal {}", sig),

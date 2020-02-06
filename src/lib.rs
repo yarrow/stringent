@@ -1,5 +1,8 @@
 #![cfg_attr(debug_assertions, allow(unused))]
-#![cfg_attr(not(debug_assertions), deny(unused, missing_docs, missing_debug_implementations))]
+#![cfg_attr(
+    not(debug_assertions),
+    deny(unused, missing_docs, missing_debug_implementations)
+)]
 #![deny(missing_copy_implementations, missing_debug_implementations)]
 #![deny(warnings)]
 #![deny(clippy::all)]
@@ -80,12 +83,12 @@ fn signal_of(status: ExitStatus) -> Option<i32> {
 
 trait StringentResult
 where
-    Self: Sized,
+    Self: Copy,
 {
-    fn status(&self) -> Option<ExitStatus>;
+    fn option_status(self) -> Option<ExitStatus>;
     fn stringent_result(self) -> Result<Self, CommandError> {
         use CommandError::*;
-        match self.status() {
+        match self.option_status() {
             None => Ok(self),
             Some(status) if status.success() => Ok(self),
             Some(status) => match status.code() {
@@ -97,14 +100,14 @@ where
 }
 
 impl StringentResult for ExitStatus {
-    fn status(&self) -> Option<ExitStatus> {
-        Some(*self)
+    fn option_status(self) -> Option<ExitStatus> {
+        Some(self)
     }
 }
 
 impl StringentResult for Option<ExitStatus> {
-    fn status(&self) -> Option<ExitStatus> {
-        *self
+    fn option_status(self) -> Option<ExitStatus> {
+        self
     }
 }
 

@@ -1,5 +1,7 @@
-#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, missing_docs))]
-#![deny(unused_must_use)]
+#![cfg_attr(debug_assertions, allow(unused))]
+#![cfg_attr(not(debug_assertions), deny(unused, missing_docs, missing_debug_implementations))]
+#![deny(missing_copy_implementations, missing_debug_implementations)]
+#![deny(warnings)]
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 

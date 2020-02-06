@@ -63,7 +63,7 @@ pub trait Stringent<T, E> {
 }
 
 #[cfg(unix)]
-fn signal_of(status: &ExitStatus) -> Option<i32> {
+fn signal_of(status: ExitStatus) -> Option<i32> {
     use std::os::unix::process::ExitStatusExt;
     status.signal()
 }
@@ -72,7 +72,7 @@ fn signal_of(status: &ExitStatus) -> Option<i32> {
 // on Windows returned None, which as far as I know isn't possible.
 // But I don't know very far!
 #[cfg(not(unix))]
-fn signal_of(status: &ExitStatus) -> Option<i32> {
+fn signal_of(status: ExitStatus) -> Option<i32> {
     None
 }
 
@@ -88,7 +88,7 @@ where
             Some(status) if status.success() => Ok(self),
             Some(status) => match status.code() {
                 Some(code) => Err(ExitCode(code)),
-                None => Err(Signal(signal_of(&status))),
+                None => Err(Signal(signal_of(status))),
             },
         }
     }

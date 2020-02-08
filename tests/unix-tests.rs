@@ -1,6 +1,17 @@
+#![cfg_attr(debug_assertions, allow(unused))]
+#![cfg_attr(
+    not(debug_assertions),
+    deny(unused, missing_docs, missing_debug_implementations)
+)]
+#![deny(missing_copy_implementations, missing_debug_implementations)]
+#![deny(warnings)]
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
+
 #![cfg(unix)]
-use std::os::unix::process::ExitStatusExt;
 use std::process::ExitStatus;
+use std::os::unix::process::ExitStatusExt;
 
 use stringent::{CommandError, Stringent};
 
@@ -85,4 +96,81 @@ fn show_exit_status_examples() {
         panicked().unwrap().code().unwrap(),
         panicked()
     );
+}
+
+use std::process::{Command, Stdio};
+use std::path::Path;
+
+#[test] fn nonexistent_command() {
+    let cmd = "/nonexistent_command";
+    if ! Path::new(cmd).is_file() {
+        match Command::new(cmd).status().stringent() {
+            Ok(_) => panic!("{} should not have succeeded", cmd),
+            Err(CommandError::SpawnFailed(_)) => {},
+            Err(e) => panic!("Unexpected error ({}) in executing {}", e, cmd),
+        }
+    }
+}
+
+#[test] fn bad_arguments() {
+    let cmd = "/bin/sleep";
+    if Path::new(cmd).is_file() {
+        match Command::new(cmd).stderr(Stdio::null()).status().stringent() {
+            Ok(_) => panic!("{} should not have succeeded", cmd),
+            Err(CommandError::ExitCode(_)) => {}, // Sleep with no arguments should complain
+            Err(e) => panic!("Unexpected error ({}) in executing {}", e, cmd),
+        }
+    }
+}
+
+#[test] fn bad_arguments_with_output() {
+    let cmd = "/bin/sleep";
+    if Path::new(cmd).is_file() {
+        match Command::new(cmd).output().stringent() {
+            Ok(_) => panic!("{} should not have succeeded", cmd),
+            Err(output) => match output.err {
+                CommandError::ExitCode(_) => {
+                    if output.stderr.len() == 0 {
+                        panic!("Expected to capture {}'s stderr", cmd);
+                    }
+                },
+                _ => panic!("Unexpected error ({}) in executing {}", output.err, cmd),
+            }
+        }
+    }
+}
+
+#[test] fn killed() {
+    let cmd = "/bin/sleep";
+    if Path::new(cmd).is_file() {
+        let mut child = Command::new(cmd).arg("3").spawn().expect(cmd);
+        let result = match child.try_wait().stringent() {
+            Err(e) => panic!("Unexpected error {}", e),
+            Ok(Some(_)) => panic!("Command terminated too quickly"),
+            Ok(None) => {
+                child.kill().expect("couldn't kill child process");
+                child.wait().stringent()
+            }
+        };
+        match result {
+            Ok(_) => panic!("Killed command {} should not have succeeded", cmd),
+            Err(CommandError::Signal(_)) => {},
+            Err(e) => panic!("Unexpected error ({}) in executing {}", e, cmd),
+        }
+    }
+}
+
+#[test] fn killed_with_output() {
+    let cmd = "/bin/sleep";
+    if Path::new(cmd).is_file() {
+        let mut child = Command::new(cmd).arg("3").spawn().expect(cmd);
+        child.kill().expect("couldn't kill child process");
+        match child.wait_with_output().stringent() {
+            Ok(_) => panic!("Killed command {} should not have succeeded", cmd),
+            Err(output) => match output.err {
+                CommandError::Signal(_) => { },
+                _ => panic!("Unexpected error ({}) in executing {}", output.err, cmd),
+            }
+        };
+    }
 }

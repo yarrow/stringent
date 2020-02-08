@@ -94,16 +94,11 @@
 //! }
 //! ```
 
-#![cfg_attr(debug_assertions, allow(unused))]
-#![cfg_attr(
-    not(debug_assertions),
-    deny(unused, missing_docs, missing_debug_implementations)
-)]
+#![deny(warnings, unused, clippy::all, clippy::pedantic)]
 #![deny(missing_copy_implementations, missing_debug_implementations)]
-#![deny(warnings)]
-#![deny(clippy::all)]
-#![deny(clippy::pedantic)]
+#![deny(missing_docs, missing_doc_code_examples)]
 #![allow(clippy::missing_errors_doc)]
+
 use std::error::Error;
 use std::fmt;
 use std::io;

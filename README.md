@@ -93,7 +93,7 @@ fn run_commands(first: &mut Command, second: &mut Command) -> Result<(), Command
     }
 }
 ```
-The `stringent` method also handles the result of the [`spawn`][spawn] method,
+The `stringent()` method also handles the result of the [`spawn`][spawn] method,
 for convenience when writing functions that return a `Result<T, CommandError>`:
 
 ```rust

@@ -99,7 +99,7 @@
 //!     }
 //! }
 //! ```
-//! The [`stringent`][stringent] method also handles the result of the [`spawn`][spawn] method,
+//! The [`stringent()`][stringent] method also handles the result of the [`spawn`][spawn] method,
 //! for convenience when writing functions that return a `Result<T, CommandError>`:
 //!
 //! ```no_run

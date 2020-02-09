@@ -3,6 +3,7 @@
 //!
 //! [Command]: https://doc.rust-lang.org/std/process/struct.Command.html
 //! [status]: https://doc.rust-lang.org/std/process/struct.Command.html#method.status
+//! [spawn]: https://doc.rust-lang.org/std/process/struct.Command.html#method.spawn
 //! [output]: https://doc.rust-lang.org/std/process/struct.Command.html#method.output
 //! [Child]: https://doc.rust-lang.org/std/process/struct.Child.html
 //! [wait]: https://doc.rust-lang.org/std/process/struct.Child.html#method.wait
@@ -37,8 +38,8 @@
 //! that are killed by a signal.
 //!
 //! This crate adds a [`stringent()`][stringent] method to the `Result`s returned by
-//! [`Commands`][Command]'s [`status()`][status] and [`output()`][output] methods, and to
-//! [`Child`][Child]'s [`wait()`][wait], [`try_wait`][try_wait], and
+//! [`Commands`][Command]'s [`status()`][status], [`spawn()`][spawn] and [`output()`][output]
+//! methods, and to [`Child`][Child]'s [`wait()`][wait], [`try_wait`][try_wait], and
 //! [`wait_with_output`][wait_with_output] methods. The [`stringent()`][stringent] method turns
 //! unsuccessful [`ExitStatus`][ExitStatus] values into errors, so the following will return
 //! [`CommandError`][CommandError]s for commands that don't successfully complete:
@@ -46,13 +47,12 @@
 //! * `child.wait().stringent()?`
 //! * `child.try_wait().stringent()?`
 //!
-//! Similarly, [`stringent()`][stringent] turns an unsuccessful [`Output`][Output] into a
+//! [`stringent()`][stringent] similarly turns an unsuccessful [`Output`][Output] into a
 //! [`CommandErrorWithOutput`][CommandErrorWithOutput].  The `stdout` and `stderr` fields of the
 //! [`Output`][Output] are saved in the corresponding fields of the
 //! [`CommandErrorWithOutput`][CommandErrorWithOutput].
 //! * `cmd.output().stringent()?`
 //! * `child.wait_with_output().stringent()?`
-//!
 //!
 //! # Example
 //!
@@ -75,9 +75,15 @@
 //! # use stringent::CommandError;
 //!
 //! fn run_commands(first: &mut Command, second: &mut Command) -> Result<(), CommandError> {
-//!     let mut status = first.status()?;
+//!     let mut status = match first.status() {
+//!         Ok(status) => status,
+//!         Err(io_err) => return Err(CommandError::SpawnFailed(io_err)),
+//!     };
 //!     if status.success() {
-//!         status = second.status()?;
+//!         status = match second.status() {
+//!             Ok(status) => status,
+//!             Err(io_err) => return Err(CommandError::SpawnFailed(io_err)),
+//!         }
 //!     }
 //!     if status.success() { return Ok(()) }
 //!     match status.code() {
@@ -93,6 +99,20 @@
 //!     }
 //! }
 //! ```
+//! The [`stringent`][stringent] method also handles the result of the [`spawn`][spawn] method,
+//! for convenience when writing functions that return a `Result<T, CommandError>`:
+//!
+//! ```no_run
+//! use std::process::Command;
+//! use stringent::{CommandError, Stringent};
+//!
+//! fn run_commands() -> Result<(), CommandError> {
+//!     let mut child = Command::new("mycommand").spawn().stringent()?;
+//!     // do more things...
+//!     child.wait().stringent()?;
+//!     Ok(())
+//! }
+//! ```
 
 #![deny(warnings, unused, clippy::all, clippy::pedantic)]
 #![deny(missing_copy_implementations, missing_debug_implementations)]
@@ -102,7 +122,7 @@
 use std::error::Error;
 use std::fmt;
 use std::io;
-use std::process::{ExitStatus, Output};
+use std::process::{Child, ExitStatus, Output};
 use std::result::Result;
 
 /// Adds error cases for commands that exit with error codes or that are killed
@@ -143,12 +163,6 @@ impl Error for CommandError {
     }
 }
 
-impl From<io::Error> for CommandError {
-    fn from(io: io::Error) -> CommandError {
-        CommandError::SpawnFailed(io)
-    }
-}
-
 /// Includes `stdout` and `stderr` fields for saved output as well as a [`CommandError`](struct.CommandErrorWithOutput.html) field.
 ///
 /// Note that the `stdout` and `stderr` fields are always present, even when `err` is
@@ -172,16 +186,6 @@ impl fmt::Display for CommandErrorWithOutput {
 impl Error for CommandErrorWithOutput {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.err.source()
-    }
-}
-
-impl From<io::Error> for CommandErrorWithOutput {
-    fn from(io: io::Error) -> CommandErrorWithOutput {
-        CommandErrorWithOutput {
-            err: CommandError::SpawnFailed(io),
-            stdout: Vec::with_capacity(0),
-            stderr: Vec::with_capacity(0),
-        }
     }
 }
 
@@ -242,7 +246,7 @@ impl StringentResult for Option<ExitStatus> {
 impl Stringent<ExitStatus, CommandError> for Result<ExitStatus, io::Error> {
     fn stringent(self) -> Result<ExitStatus, CommandError> {
         match self {
-            Err(io_err) => Err(CommandError::from(io_err)),
+            Err(io_err) => Err(CommandError::SpawnFailed(io_err)),
             Ok(status) => status.stringent_result(),
         }
     }
@@ -251,8 +255,17 @@ impl Stringent<ExitStatus, CommandError> for Result<ExitStatus, io::Error> {
 impl Stringent<Option<ExitStatus>, CommandError> for Result<Option<ExitStatus>, io::Error> {
     fn stringent(self) -> Result<Option<ExitStatus>, CommandError> {
         match self {
-            Err(io_err) => Err(CommandError::from(io_err)),
+            Err(io_err) => Err(CommandError::SpawnFailed(io_err)),
             Ok(status) => status.stringent_result(),
+        }
+    }
+}
+
+impl Stringent<Child, CommandError> for Result<Child, io::Error> {
+    fn stringent(self) -> Result<Child, CommandError> {
+        match self {
+            Err(io_err) => Err(CommandError::SpawnFailed(io_err)),
+            Ok(child) => Ok(child),
         }
     }
 }
@@ -260,7 +273,11 @@ impl Stringent<Option<ExitStatus>, CommandError> for Result<Option<ExitStatus>, 
 impl Stringent<Output, CommandErrorWithOutput> for Result<Output, io::Error> {
     fn stringent(self) -> Result<Output, CommandErrorWithOutput> {
         match self {
-            Err(io_err) => Err(CommandErrorWithOutput::from(io_err)),
+            Err(io_err) => Err(CommandErrorWithOutput {
+                err: CommandError::SpawnFailed(io_err),
+                stdout: Vec::with_capacity(0),
+                stderr: Vec::with_capacity(0),
+            }),
             Ok(output) => match output.status.stringent_result() {
                 Err(err) => Err(CommandErrorWithOutput {
                     err,

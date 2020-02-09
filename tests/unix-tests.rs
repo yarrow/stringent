@@ -134,7 +134,7 @@ use std::path::Path;
 #[test] fn killed() {
     let cmd = "/bin/sleep";
     if Path::new(cmd).is_file() {
-        let mut child = Command::new(cmd).arg("3").spawn().expect(cmd);
+        let mut child = Command::new(cmd).arg("3").spawn().stringent().expect(cmd);
         let result = match child.try_wait().stringent() {
             Err(e) => panic!("Unexpected error {}", e),
             Ok(Some(_)) => panic!("Command terminated too quickly"),
@@ -154,7 +154,7 @@ use std::path::Path;
 #[test] fn killed_with_output() {
     let cmd = "/bin/sleep";
     if Path::new(cmd).is_file() {
-        let mut child = Command::new(cmd).arg("3").spawn().expect(cmd);
+        let mut child = Command::new(cmd).arg("3").spawn().stringent().expect(cmd);
         child.kill().expect("couldn't kill child process");
         match child.wait_with_output().stringent() {
             Ok(_) => panic!("Killed command {} should not have succeeded", cmd),

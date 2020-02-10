@@ -48,7 +48,7 @@ fn killed_by_signal() -> Option<ExitStatus> {
 #[test]
 fn test_success() {
     if let Some(status) = successful() {
-        let result = Ok(status).stringent();
+        let result = Ok(status).verify();
         match result {
             Ok(_) => {}
             _ => panic!("success wasn't successful"),
@@ -59,7 +59,7 @@ fn test_success() {
 #[test]
 fn test_panic() {
     if let Some(status) = panicked() {
-        let result = Ok(status).stringent();
+        let result = Ok(status).verify();
         match result {
             Err(CommandError::ExitCode(PANIC)) => {}
             _ => panic!("Expected panic status to report a bad exit code"),
@@ -70,7 +70,7 @@ fn test_panic() {
 #[test]
 fn test_killed_by_signal() {
     if let Some(status) = killed_by_signal() {
-        let result = Ok(status).stringent();
+        let result = Ok(status).verify();
         match result {
             Err(CommandError::Signal(Some(XCPU))) => {}
             _ => panic!("Expected killed_by_signal to report XCPU"),
@@ -95,7 +95,7 @@ use std::path::Path;
 #[test] fn nonexistent_command() {
     let cmd = "/nonexistent_command";
     if ! Path::new(cmd).is_file() {
-        match Command::new(cmd).status().stringent() {
+        match Command::new(cmd).status().verify() {
             Ok(_) => panic!("{} should not have succeeded", cmd),
             Err(CommandError::SpawnFailed(_)) => {},
             Err(e) => panic!("Unexpected error ({}) in executing {}", e, cmd),
@@ -106,7 +106,7 @@ use std::path::Path;
 #[test] fn bad_arguments() {
     let cmd = "/bin/sleep";
     if Path::new(cmd).is_file() {
-        match Command::new(cmd).stderr(Stdio::null()).status().stringent() {
+        match Command::new(cmd).stderr(Stdio::null()).status().verify() {
             Ok(_) => panic!("{} should not have succeeded", cmd),
             Err(CommandError::ExitCode(_)) => {}, // Sleep with no arguments should complain
             Err(e) => panic!("Unexpected error ({}) in executing {}", e, cmd),
@@ -117,7 +117,7 @@ use std::path::Path;
 #[test] fn bad_arguments_with_output() {
     let cmd = "/bin/sleep";
     if Path::new(cmd).is_file() {
-        match Command::new(cmd).output().stringent() {
+        match Command::new(cmd).output().verify() {
             Ok(_) => panic!("{} should not have succeeded", cmd),
             Err(output) => match output.err {
                 CommandError::ExitCode(_) => {
@@ -134,13 +134,13 @@ use std::path::Path;
 #[test] fn killed() {
     let cmd = "/bin/sleep";
     if Path::new(cmd).is_file() {
-        let mut child = Command::new(cmd).arg("3").spawn().stringent().expect(cmd);
-        let result = match child.try_wait().stringent() {
+        let mut child = Command::new(cmd).arg("3").spawn().verify().expect(cmd);
+        let result = match child.try_wait().verify() {
             Err(e) => panic!("Unexpected error {}", e),
             Ok(Some(_)) => panic!("Command terminated too quickly"),
             Ok(None) => {
                 child.kill().expect("couldn't kill child process");
-                child.wait().stringent()
+                child.wait().verify()
             }
         };
         match result {
@@ -154,9 +154,9 @@ use std::path::Path;
 #[test] fn killed_with_output() {
     let cmd = "/bin/sleep";
     if Path::new(cmd).is_file() {
-        let mut child = Command::new(cmd).arg("3").spawn().stringent().expect(cmd);
+        let mut child = Command::new(cmd).arg("3").spawn().verify().expect(cmd);
         child.kill().expect("couldn't kill child process");
-        match child.wait_with_output().stringent() {
+        match child.wait_with_output().verify() {
             Ok(_) => panic!("Killed command {} should not have succeeded", cmd),
             Err(output) => match output.err {
                 CommandError::Signal(_) => { },

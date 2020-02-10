@@ -13,9 +13,9 @@
 //! [ioResult]: https://doc.rust-lang.org/std/io/type.Result.html
 //! [ExitStatus]: https://doc.rust-lang.org/std/process/struct.ExitStatus.html
 //! [Output]: https://doc.rust-lang.org/std/process/struct.Output.html
-//! [stringent]: stringent/trait.Stringent.html#tymethod.stringent
-//! [CommandError]: stringent/enum.CommandError.html
-//! [CommandErrorWithOutput]: stringent/enum.CommandErrorWithOutput.html
+//! [verify]: trait.Stringent.html#tymethod.verify
+//! [CommandError]: enum.CommandError.html
+//! [CommandErrorWithOutput]: struct.CommandErrorWithOutput.html
 //!
 //! The standard library's [`Command`][Command] module's [`io::Result`][ioResult]
 //! values for command completion can sometimes feel like "the operation was a
@@ -37,22 +37,22 @@
 //! caller, because that will ignore commands that exit with an error code or
 //! that are killed by a signal.
 //!
-//! This crate adds a [`stringent()`][stringent] method to the `Result`s returned by
+//! This crate adds a [`verify()`][verify] method to the `Result`s returned by
 //! [`Commands`][Command]'s [`status()`][status], [`spawn()`][spawn] and [`output()`][output]
 //! methods, and to [`Child`][Child]'s [`wait()`][wait], [`try_wait`][try_wait], and
-//! [`wait_with_output`][wait_with_output] methods. The [`stringent()`][stringent] method turns
+//! [`wait_with_output`][wait_with_output] methods. The [`verify()`][verify] method turns
 //! unsuccessful [`ExitStatus`][ExitStatus] values into errors, so the following will return
 //! [`CommandError`][CommandError]s for commands that don't successfully complete:
-//! * `cmd.status().stringent()?`
-//! * `child.wait().stringent()?`
-//! * `child.try_wait().stringent()?`
+//! * `cmd.status().verify()?`
+//! * `child.wait().verify()?`
+//! * `child.try_wait().verify()?`
 //!
-//! [`stringent()`][stringent] similarly turns an unsuccessful [`Output`][Output] into a
+//! [`verify()`][verify] similarly turns an unsuccessful [`Output`][Output] into a
 //! [`CommandErrorWithOutput`][CommandErrorWithOutput].  The `stdout` and `stderr` fields of the
 //! [`Output`][Output] are saved in the corresponding fields of the
 //! [`CommandErrorWithOutput`][CommandErrorWithOutput].
-//! * `cmd.output().stringent()?`
-//! * `child.wait_with_output().stringent()?`
+//! * `cmd.output().verify()?`
+//! * `child.wait_with_output().verify()?`
 //!
 //! # Example
 //!
@@ -61,13 +61,13 @@
 //! use stringent::{CommandError, Stringent};
 //!
 //! fn run_commands(first: &mut Command, second: &mut Command) -> Result<(), CommandError> {
-//!     first.status().stringent()?;
-//!     second.status().stringent()?;
+//!     first.status().verify()?;
+//!     second.status().verify()?;
 //!     Ok(())
 //! }
 //! ```
 //!
-//! Without [`stringent()`][stringent] (but with [`CommandError`][CommandError]), we'd need to
+//! Without [`verify()`][verify] (but with [`CommandError`][CommandError]), we'd need to
 //! write something like this:
 //!
 //! ```no_run
@@ -99,7 +99,7 @@
 //!     }
 //! }
 //! ```
-//! The [`stringent()`][stringent] method also handles the result of the [`spawn`][spawn] method,
+//! The [`verify()`][verify] method also handles the result of the [`spawn`][spawn] method,
 //! for convenience when writing functions that return a `Result<T, CommandError>`:
 //!
 //! ```no_run
@@ -107,9 +107,9 @@
 //! use stringent::{CommandError, Stringent};
 //!
 //! fn run_commands() -> Result<(), CommandError> {
-//!     let mut child = Command::new("mycommand").spawn().stringent()?;
+//!     let mut child = Command::new("mycommand").spawn().verify()?;
 //!     // do more things...
-//!     child.wait().stringent()?;
+//!     child.wait().verify()?;
 //!     Ok(())
 //! }
 //! ```
@@ -136,7 +136,7 @@ pub enum CommandError {
     SpawnFailed(io::Error),
     /// Holds the exit code when a command terminates with an error
     ExitCode(i32),
-    /// Holds the signal number when a (unix) process is killed by a signal
+    /// Holds the signal number when the command is killed by a signal (only on unix)
     Signal(Option<i32>),
 }
 
@@ -189,14 +189,14 @@ impl Error for CommandErrorWithOutput {
     }
 }
 
-/// Adds the `stringent()` method to the `io::Result` values returned by `Command::status`,
+/// Adds the `verify()` method to the `io::Result` values returned by `Command::status`,
 /// `Command::output`, `Child::wait`, `Child::try_wait`, and `Child::wait_with_output`.
 pub trait Stringent<T, E> {
     /// Changes a `Result<T, io::Error>` value to `Result<T, CmdErr>` value, where
     /// `CmdErr` is `CommandError` when `T` is `ExitStatus` or `Option<ExitStatus>`,
     /// and `CommandErrorWithOutput` when `T` is `Output`.
     ///
-    fn stringent(self) -> Result<T, E>;
+    fn verify(self) -> Result<T, E>;
 }
 
 #[cfg(unix)]
@@ -244,7 +244,7 @@ impl StringentResult for Option<ExitStatus> {
 }
 
 impl Stringent<ExitStatus, CommandError> for Result<ExitStatus, io::Error> {
-    fn stringent(self) -> Result<ExitStatus, CommandError> {
+    fn verify(self) -> Result<ExitStatus, CommandError> {
         match self {
             Err(io_err) => Err(CommandError::SpawnFailed(io_err)),
             Ok(status) => status.stringent_result(),
@@ -253,7 +253,7 @@ impl Stringent<ExitStatus, CommandError> for Result<ExitStatus, io::Error> {
 }
 
 impl Stringent<Option<ExitStatus>, CommandError> for Result<Option<ExitStatus>, io::Error> {
-    fn stringent(self) -> Result<Option<ExitStatus>, CommandError> {
+    fn verify(self) -> Result<Option<ExitStatus>, CommandError> {
         match self {
             Err(io_err) => Err(CommandError::SpawnFailed(io_err)),
             Ok(status) => status.stringent_result(),
@@ -262,7 +262,7 @@ impl Stringent<Option<ExitStatus>, CommandError> for Result<Option<ExitStatus>, 
 }
 
 impl Stringent<Child, CommandError> for Result<Child, io::Error> {
-    fn stringent(self) -> Result<Child, CommandError> {
+    fn verify(self) -> Result<Child, CommandError> {
         match self {
             Err(io_err) => Err(CommandError::SpawnFailed(io_err)),
             Ok(child) => Ok(child),
@@ -271,7 +271,7 @@ impl Stringent<Child, CommandError> for Result<Child, io::Error> {
 }
 
 impl Stringent<Output, CommandErrorWithOutput> for Result<Output, io::Error> {
-    fn stringent(self) -> Result<Output, CommandErrorWithOutput> {
+    fn verify(self) -> Result<Output, CommandErrorWithOutput> {
         match self {
             Err(io_err) => Err(CommandErrorWithOutput {
                 err: CommandError::SpawnFailed(io_err),

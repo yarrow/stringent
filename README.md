@@ -1,7 +1,19 @@
-# stringent
+This library provides the [`verify()`][verify] method, a convenient way to
+return an error when a [`std::process::Command`][Command] process starts
+successfully but exits abnormally.
 
-Return an error when a [`std::process::Command`][Command] method
-successfully starts a process, but the process itself isn't successful.
+```rust
+let status = Command(`badexit`).status;
+assert!(status
+```
+given [`Command`][Command]('`cmd.status()` returns an [`ExitStatus`][ExitStatus] if `cmd` starts successfully but is killed by a signal or stops with an error code. But `cmd.status().verify()` turns those [`ExitStatus`][ExitStatus] values into errors.
+
+You can also use [`verify()`][verify] in:
+
+* `cmd.output().verify()`
+* `child.wait().verify()`
+* `child.try_wait().verify()`
+* `child.wait_with_output().verify()`
 
 [Command]: https://doc.rust-lang.org/std/process/struct.Command.html
 [status]: https://doc.rust-lang.org/std/process/struct.Command.html#method.status
@@ -15,6 +27,27 @@ successfully starts a process, but the process itself isn't successful.
 [ioResult]: https://doc.rust-lang.org/std/io/type.Result.html
 [ExitStatus]: https://doc.rust-lang.org/std/process/struct.ExitStatus.html
 [Output]: https://doc.rust-lang.org/std/process/struct.Output.html
+[verify]: trait.Verify.html#tymethod.verify
+[CommandStatusError]: enum.CommandStatusError.html
+[CommandError]: struct.CommandError.html
+
+# Example
+
+```rust
+use std::process::Command;
+use stringent::{CommandError, Verify};
+
+fn run_commands() -> Result<(), CommandError> {
+    Command::new("immediate").status().verify()?;
+    let mut child = Command::new("run_in_parallel").spawn().verify()?;
+    long_running_computation();
+    child.wait().verify()?;
+    //let output = child.wait_with_output().verify()?;
+    //process(&output.stdout);
+    Ok(())
+}
+# fn long_running_computation() { }
+```
 
 The standard library's [`Command`][Command] module's [`io::Result`][ioResult]
 values for command completion can sometimes feel like "the operation was a
@@ -24,7 +57,9 @@ method (which runs a [`Command`][Command] in a new process) returns either
 `Ok(`[`ExitStatus`][ExitStatus]`)`; but then we need to check the returned
 status to see if the command actually succeeded:
 
-```rust
+```no_run
+# use std::process::Command;
+# let mut cmd = Command::new("x");
 let success = match cmd.status() {
     Err(_) => false,
     Ok(status) => status.success(),
@@ -34,76 +69,66 @@ In particular, we can't use `cmd.status()?` to pass errors back to our
 caller, because that will ignore commands that exit with an error code or
 that are killed by a signal.
 
-This crate adds a `stringent` method to the `Result`s returned by
+This crate adds a [`verify()`][verify] method to the `Result`s returned by
 [`Commands`][Command]'s [`status()`][status], [`spawn()`][spawn] and [`output()`][output]
 methods, and to [`Child`][Child]'s [`wait()`][wait], [`try_wait`][try_wait], and
-[`wait_with_output`][wait_with_output] methods. The `stringent` method turns
+[`wait_with_output`][wait_with_output] methods. The [`verify()`][verify] method turns
 unsuccessful [`ExitStatus`][ExitStatus] values into errors, so the following will return
-`CommandError`s for commands that don't successfully complete:
-* `cmd.status().stringent()?`
-* `child.wait().stringent()?`
-* `child.try_wait().stringent()?`
+[`CommandStatusError`][CommandStatusError]s for commands that don't successfully complete:
+* `cmd.status().verify()?`
+* `child.wait().verify()?`
+* `child.try_wait().verify()?`
 
-`stringent` similarly turns an unsuccessful [`Output`][Output] into a
-`CommandErrorWithOutput`.  The `stdout` and `stderr` fields of the
+[`verify()`][verify] similarly turns an unsuccessful [`Output`][Output] into a
+[`CommandError`][CommandError].  The `stdout` and `stderr` fields of the
 [`Output`][Output] are saved in the corresponding fields of the
-`CommandErrorWithOutput`.
-* `cmd.output().stringent()?`
-* `child.wait_with_output().stringent()?`
+[`CommandError`][CommandError].
+* `cmd.output().verify()?`
+* `child.wait_with_output().verify()?`
 
-## Example
+Without [`verify()`][verify] (but with [`CommandStatusError`][CommandStatusError]), we'd need to
+write something like this:
 
-```rust
-use std::process::Command;
-use stringent::{CommandError, Stringent};
+```no_run
+# use std::process::Command;
+# use stringent::CommandStatusError;
 
-fn run_commands(first: &mut Command, second: &mut Command) -> Result<(), CommandError> {
-    first.status().stringent()?;
-    second.status().stringent()?;
-    Ok(())
-}
-```
-
-Without `stringent` (but with `CommandError`), we'd need to write something like this:
-
-```rust
-
-fn run_commands(first: &mut Command, second: &mut Command) -> Result<(), CommandError> {
+fn run_commands(first: &mut Command, second: &mut Command) -> Result<(), CommandStatusError> {
     let mut status = match first.status() {
         Ok(status) => status,
-        Err(io_err) => return Err(CommandError::SpawnFailed(io_err)),
+        Err(io_err) => return Err(CommandStatusError::SpawnFailed(io_err)),
     };
     if status.success() {
         status = match second.status() {
             Ok(status) => status,
-            Err(io_err) => return Err(CommandError::SpawnFailed(io_err)),
+            Err(io_err) => return Err(CommandStatusError::SpawnFailed(io_err)),
         }
     }
     if status.success() { return Ok(()) }
     match status.code() {
-        Some(code) => Err(CommandError::ExitCode(code)),
+        Some(code) => Err(CommandStatusError::ExitCode(code)),
         None => {
             #[cfg(unix)]
                 use std::os::unix::process::ExitStatusExt;
                 let signal = status.signal();
             #[cfg(not(unix))]
                 let signal = None;
-            Err(CommandError::Signal(signal))
+            Err(CommandStatusError::Signal(signal))
         }
     }
 }
 ```
-The `stringent()` method also handles the result of the [`spawn`][spawn] method,
-for convenience when writing functions that return a `Result<T, CommandError>`:
+The [`verify()`][verify] method also handles the result of the [`spawn`][spawn] method,
+for convenience when writing functions that return a `Result<T, CommandStatusError>`:
 
-```rust
+```no_run
 use std::process::Command;
-use stringent::{CommandError, Stringent};
+use stringent::{CommandStatusError, Verify};
 
-fn run_commands() -> Result<(), CommandError> {
-    let mut child = Command::new("mycommand").spawn().stringent()?;
+fn run_commands() -> Result<(), CommandStatusError> {
+    let mut child = Command::new("mycommand").spawn().verify()?;
     // do more things...
-    child.wait().stringent()?;
+    child.wait().verify()?;
     Ok(())
 }
 ```

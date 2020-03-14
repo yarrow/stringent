@@ -1,6 +1,6 @@
-//! This library provides a convenient way to return an error when a
-//! [`std::process::Command`][Command] process starts successfully but exits with an error code
-//! or is killed by a signal.
+//! This library provides the [`verify()`][verify] method, a convenient way to
+//! return an error when a [`std::process::Command`][Command] process starts
+//! successfully but exits abnormally.
 //!
 //! [Command]: https://doc.rust-lang.org/std/process/struct.Command.html
 //! [status]: https://doc.rust-lang.org/std/process/struct.Command.html#method.status
@@ -18,21 +18,63 @@
 //! [CommandStatusError]: enum.CommandStatusError.html
 //! [CommandError]: struct.CommandError.html
 //!
-//! # Example
+//! # Examples
+//!
+//! In the simplest case we want to run a command without capturing either `stdout` or
+//! `stderr`.
+//!
+//! ```no_run
+//! use std::process::Command;
+//! use stringent::{CommandStatusError, Verify};
+//!
+//! fn run_command() -> Result<(), CommandStatusError> {
+//!     Command::new("cmd").status().verify()?;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! If we do capture `stdout` and `stderr`, then the error path as well as the happy path may
+//! want to process the captured output.
+//!
+//! ```no_run
+//! use std::process::Command;
+//! use stringent::{CommandError, Std, Verify};
+//!
+//! fn run_commands() -> Result<(), CommandError> {
+//!     let commands = vec!["cmd1", "cmd2", "cmd3"];
+//!     for cmd in commands {
+//!         match Command::new(cmd).output().verify() {
+//!             Ok(output) => process(&output),
+//!             Err(err) => {
+//!                 match err.output {
+//!                     Some(ref std) => log(&std.stderr),
+//!                     _ => {}
+//!                 }
+//!                 return Err(err);
+//!             }
+//!         }
+//!     }
+//!     Ok(())
+//! }
+//!
+//! # fn process(output: &std::process::Output) { }
+//! # fn log(stderr: &Vec<u8>) { }
+//!
+//! ```
 //!
 //! ```no_run
 //! use std::process::Command;
 //! use stringent::{CommandError, Verify};
 //!
-//! fn run_commands(first: &mut Command, second: &mut Command) -> Result<(), CommandError> {
+//! fn run_commands() -> Result<(), CommandError> {
 //!     Command::new("immediate").status().verify()?;
 //!     let mut child = Command::new("run_in_parallel").spawn().verify()?;
 //!     long_running_computation();
-//!     child.wait().verify()?;
-//!     //let output = child.wait_with_output().verify()?;
-//!     //process(&output.stdout);
+//!     let output = child.wait_with_output().verify()?;
+//!     process(&output.stdout);
 //!     Ok(())
 //! }
+//! # fn process(stdout: &Vec<u8>) { }
 //! # fn long_running_computation() { }
 //! ```
 //!
